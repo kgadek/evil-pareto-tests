@@ -2,3 +2,4 @@
 cabal.sandbox.config
 evil.sublime-project
 evil.sublime-workspace
+dist
