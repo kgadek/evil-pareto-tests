@@ -3,3 +3,7 @@ cabal.sandbox.config
 evil.sublime-project
 evil.sublime-workspace
 dist
+tmp
+dash
+.DS_Store
+cabal.config
