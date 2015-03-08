@@ -1,6 +1,12 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 
 module Main where
 
@@ -17,67 +23,91 @@ import qualified Text.PrettyPrint as PP
 import qualified System.Random.MWC as R
 import qualified Data.Vector as V
 
---------------------------------------------------------------------------------
-
-test :: (V.Vector Word32) -> ST s Int
-test seed = do
-    R.initialize seed --   ST s (R.Gen (PrimState (ST s)))
-                      -- ≡ ST s (R.GenST s)
-    return 123
-
-genSeed :: IO (V.Vector Word32)
-genSeed = R.withSystemRandom aux
-  where aux (gen::R.GenST s) = R.uniformVector gen 255 :: ST s (V.Vector Word32)
-
-
 
 --------------------------------------------------------------------------------
--- TOOLS
---------------------------------------------------------------------------------
+-- TOOLS: PPrintable
 
 class PPrintable a where
     pprint :: a -> Doc
 
 instance PPrintable () where pprint = const $ PP.text "()"
+instance PPrintable Float where pprint = PP.float
+
 
 --------------------------------------------------------------------------------
+-- EA CLASSES
+
+class Individual (a :: * -> * -> *) x y where
+    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y)
 
 
+--------------------------------------------------------------------------------
+-- EA INSTANCE
 
 type Domain   = Float
 type CoDomain = Float
 
-instance PPrintable Float where pprint = PP.float
---instance PPrintable Domain    where pprint = PP.float
---instance PPrintable CoDomain  where pprint = PP.float
 
+newtype IndividualBox x y = IndividualBox (x,y)
 
-newtype Individual a = Individual (Domain,a)
+instance Individual IndividualBox Domain () where
+    newIndividual gen = R.uniformR (-5,5) gen >>= return . IndividualBox . (,())
 
-instance (PPrintable codomain) => Show (Individual codomain) where
+instance Individual IndividualBox Domain CoDomain where
+    newIndividual gen = newIndividual gen >>= return . fitnessify
+
+instance (PPrintable x, PPrintable y) => Show (IndividualBox x y) where
     show = PP.render . pprint
-instance (PPrintable codomain) => PPrintable (Individual codomain) where
-    pprint (Individual (x,y)) = PP.float x PP.<> PP.char '↣' PP.<> pprint y
 
-
---------------------------------------------------------------------------------
+instance (PPrintable x, PPrintable y) => PPrintable (IndividualBox x y) where
+    pprint (IndividualBox (x,y)) = pprint x PP.<> PP.char '↣' PP.<> pprint y
 
 
 fitness :: Domain -> CoDomain
 fitness x = (x-1)*(x+2)
 
-fitnessify :: Individual () -> Individual CoDomain
-fitnessify (Individual (x, ())) = Individual (x, fitness x)
+
+--------------------------------------------------------------------------------
+-- RANDOM
+
+type RandomSeed = V.Vector Word32
+
+genSeed :: IO RandomSeed
+genSeed = R.withSystemRandom aux
+  where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
+
+generatePopulation :: (Individual a x y) => Int -> R.GenST s -> ST s (V.Vector (a x y))
+generatePopulation size gen = V.fromList <$> replicateM size (newIndividual gen)
 
 
-initialize :: [Individual ()]
-initialize = Individual . (,()) <$> [-5,-4.75..5] -- TODO [kgdk] 8 mar 2015: randomize
+--------------------------------------------------------------------------------
+-- EA OPERATORS
 
-mutate :: Individual a -> Individual ()
-mutate (Individual (x,_)) = Individual . (,()) $ x + 0.15
+iteration :: (Individual a x y) => RandomSeed -> ST s (V.Vector (a x y), V.Vector (a x y))
+iteration seed = do
+    gen <- R.initialize seed
+    initial_population1 <- generatePopulation population_size gen
+    initial_population2 <- generatePopulation population_size gen
+    return (initial_population1, initial_population2)
+  where
+    population_size = 20
 
-crossover :: Individual a -> Individual a -> [Individual ()]
-crossover (Individual (x, _)) (Individual (y, _)) = [Individual (x + y / 2, ())]
+
+--------------------------------------------------------------------------------
+
+
+fitnessify :: IndividualBox Domain () -> IndividualBox Domain CoDomain
+fitnessify (IndividualBox (x, ())) = IndividualBox (x, fitness x)
+
+
+initialize :: [IndividualBox Domain ()]
+initialize = IndividualBox . (,()) <$> [-5,-4.75..5] -- TODO [kgdk] 8 mar 2015: randomize
+
+mutate :: IndividualBox Domain a -> IndividualBox Domain ()
+mutate (IndividualBox (x,_)) = IndividualBox . (,()) $ x + 0.15
+
+crossover :: IndividualBox Domain a -> IndividualBox Domain a -> [IndividualBox Domain ()]
+crossover (IndividualBox (x, _)) (IndividualBox (y, _)) = [IndividualBox (x + y / 2, ())]
 
 main = do
     let init = initialize
@@ -95,9 +125,11 @@ main = do
     print $ mutate1
 
     seed <- genSeed
-    print seed
-    let x = runST $ test seed
-    print x
+    --print seed
+    --let x = runST $ test seed
+    --print x
+    let (res :: (V.Vector (IndividualBox Domain CoDomain), V.Vector (IndividualBox Domain CoDomain))) = runST $ iteration seed
+    print res
 
 
     putStrLn "OHAI"
