@@ -8,7 +8,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE GADTs #-}
 
 
@@ -32,145 +31,101 @@ import qualified Data.Vector as V
 --------------------------------------------------------------------------------
 -- TOOLS: PPrintable
 
---class PPrintable a where
---    pprint :: a -> Doc
+class PPrintable a where
+    pprint :: a -> Doc
 
---instance PPrintable () where pprint = const $ PP.text "()"
---instance PPrintable Float where pprint = PP.float
+instance PPrintable () where pprint = const $ PP.text "()"
+instance PPrintable Float where pprint = PP.float
 
 
 --------------------------------------------------------------------------------
 -- EA CLASSES
 
 class Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
-    --data Foo (b :: IsFitnessEvaluated) :: *
-    --data BoxY a x y :: *
-    --data BoxN a x y :: *
-
-    --newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (Box a x y No)
+    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y No)
 
     mkIndividual :: x -> a x y No
 
-    --fitnessify :: BoxN a x y -> BoxY a x y
+    fitnessify :: a x y No -> a x y Yes
 
-    --getIndividualFoo :: BoxN a x y -> x
-    --getFitness :: BoxY a x y -> y
+    getIndividual :: forall fe_ .  a x y fe_ -> x
+    getFitness :: a x y Yes -> y
 
 
 data IsFitnessEvaluated = Yes | No
 
 
 type Domain   = Float
-type CoDomain = Int
+type CoDomain = Float
 
 
---newtype IndividualBox x y (fe :: IsFitnessEvaluated) = IndividualBox (x,y)
 data IndividualBox x y (fe :: IsFitnessEvaluated) where
     IndividualBoxFit   :: x -> y -> IndividualBox x y Yes
     IndividualBoxNofit :: x -> IndividualBox x y No
 
+
 instance Individual IndividualBox Domain CoDomain where
-    --data Foo No  = FooIBN (IndividualBox Domain () No)
-    --data Foo Yes = FooIBY (IndividualBox Domain () Yes)
-    --data BoxY IndividualBox Domain CoDomain = IndividualBox Domain CoDomain Yes
-    --data BoxN IndividualBox Domain CoDomain = IndividualBox Domain ()       No
+    newIndividual gen = R.uniformR (-5,5) gen >>= return . IndividualBoxNofit
+    fitnessify (IndividualBoxNofit x) = IndividualBoxFit x ((x-1)*(x+2))
 
-    --newIndividual gen = R.uniformR (-5,5) gen >>= return . IndividualBox . (,())
-    --fitnessify (IndividualBox (x,())) = IndividualBox (x, 123)
-
-    --mkIndividual :: Domain -> Box IndividualBox Domain CoDomain No
     mkIndividual x = IndividualBoxNofit x
 
-    --getIndividualFoo (IndividualBox (x, _)) = x
-    --getFitness (IndividualBox (_, y)) = y
+    getIndividual (IndividualBoxFit x _) = x
+    getIndividual (IndividualBoxNofit x) = x
+    getFitness (IndividualBoxFit _ y) = y
 
 
+instance (PPrintable x, Individual a x y)               => PPrintable (a x y No) where
+    pprint = pprint . getIndividual
 
---test2 :: Box IndividualBox Domain CoDomain No
---test2 :: Foo No
-test2 :: IndividualBox Domain CoDomain No
-test2 = mkIndividual (4 :: Domain)
+instance (PPrintable x, PPrintable y, Individual a x y) => PPrintable (a x y Yes) where
+    pprint x = px PP.<> PP.char '↣' PP.<> py
+      where px = pprint $ getIndividual x
+            py = pprint $ getFitness x
 
+instance (PPrintable x, Individual a x y)               => Show (a x y No) where
+    show = PP.render . pprint
 
---test :: Domain
---test = getIndividualFoo x
---  where x = mkIndividual (5 :: Domain) :: IndividualBox Domain CoDomain No
-
---instance (PPrintable x, Individual IndividualBox x y No) => Show (IndividualBox x y No) where
---    show = PP.render . pprint . getIndividual
-
---instance (PPrintable x, PPrintable y, Individual IndividualBox x y Yes) => Show (IndividualBox x y Yes) where
---    show = PP.render . pprint . getFitness
-
---test :: IndividualBox Domain CoDomain No
---test = mkIndividual 4 :: Individual IndividualBox Domain CoDomain No => IndividualBox Domain CoDomain No
-
-
---instance (PPrintable x, PPrintable x, PPrintable y) => Show (IndividualBox x y Yes) where
---    show x = "YE"
-
---instance (Individual a x y Yes, PPrintable x) => Show (Box a x y Yes) where
---    show = PP.render . pprint . getIndividual
-
---instance (Individual a x y Yes, PPrintable x, PPrintable y) => Show (a x y Yes) where
---    show x = PP.render (pprint (getIndividual x) PP.<> PP.char '↣' PP.<> pprint (getFitness x))
-
-
-
---instance (PPrintable x, PPrintable y) => Show (IndividualBox x y Yes) where
---    show = PP.render . pprint
-
---instance (PPrintable x, PPrintable y) => Show (IndividualBox x y No) where
---    show = PP.render . pprint
-
---instance (PPrintable x, PPrintable y) => PPrintable (IndividualBox x y Yes) where
---    pprint (IndividualBox (x,y)) = pprint x PP.<> PP.char '↣' PP.<> pprint y
-
---instance (PPrintable x, PPrintable y) => PPrintable (IndividualBox x y No) where
---    pprint (IndividualBox (x,y)) = pprint x PP.<> PP.text "↣?"
+instance (PPrintable x, PPrintable y, Individual a x y) => Show (a x y Yes) where
+    show = PP.render . pprint
 
 
 --------------------------------------------------------------------------------
 -- RANDOM
 
---type RandomSeed = V.Vector Word32
+type RandomSeed = V.Vector Word32
 
---genSeed :: IO RandomSeed
---genSeed = R.withSystemRandom aux
---  where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
+genSeed :: IO RandomSeed
+genSeed = R.withSystemRandom aux
+  where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
 
---generatePopulation :: (Individual a x y No) => Int -> R.GenST s -> ST s (V.Vector (a x y))
---generatePopulation size gen = V.fromList <$> replicateM size (newIndividual gen)
+generatePopulation :: (Individual a x y) => Int -> R.GenST s -> ST s (V.Vector (a x y No))
+generatePopulation size gen = V.fromList <$> replicateM size (newIndividual gen)
 
 
 ----------------------------------------------------------------------------------
 ---- EA OPERATORS
 
---iteration :: (Individual a x y Yes) => RandomSeed -> ST s (V.Vector (a x y), V.Vector (a x y))
---iteration seed = do
---    gen <- R.initialize seed
---    initial_population1 <- generatePopulation population_size gen
---    initial_population2 <- generatePopulation population_size gen
---    return (initial_population1, initial_population2)
---  where
---    population_size = 20
+iteration :: (Individual a x y) => RandomSeed -> ST s (V.Vector (a x y No), V.Vector (a x y No))
+iteration seed = do
+    gen <- R.initialize seed
+    initial_population1 <- generatePopulation population_size gen
+    initial_population2 <- generatePopulation population_size gen
+    return (initial_population1, initial_population2)
+  where
+    population_size = 20
 
 
 --------------------------------------------------------------------------------
 
-
---fitnessify :: IndividualBox Domain () -> IndividualBox Domain CoDomain
---fitnessify (IndividualBox (x, ())) = IndividualBox (x, fitness x)
-
-
---initialize :: [IndividualBox Domain ()]
---initialize = IndividualBox . (,()) <$> [-5,-4.75..5] -- TODO [kgdk] 8 mar 2015: randomize
 
 --mutate :: IndividualBox Domain a -> IndividualBox Domain ()
 --mutate (IndividualBox (x,_)) = IndividualBox . (,()) $ x + 0.15
 
 --crossover :: IndividualBox Domain a -> IndividualBox Domain a -> [IndividualBox Domain ()]
 --crossover (IndividualBox (x, _)) (IndividualBox (y, _)) = [IndividualBox (x + y / 2, ())]
+
+type VInds a = V.Vector (IndividualBox Domain CoDomain a)
 
 main = do
     --let init = initialize
@@ -187,12 +142,9 @@ main = do
     --print $ cross1
     --print $ mutate1
 
-    --seed <- genSeed
-    ----print seed
-    ----let x = runST $ test seed
-    ----print x
-    --let (res :: (V.Vector (IndividualBox Domain CoDomain), V.Vector (IndividualBox Domain CoDomain))) = runST $ iteration seed
-    --print res
+    seed <- genSeed
+    let (res :: (VInds No, VInds No)) = runST $ iteration seed
+    print $ fmap (fmap fitnessify )res
 
 
     putStrLn "OHAI"
