@@ -13,69 +13,21 @@
 
 module Main where
 
+-- base
 import Control.Applicative
 import Control.Monad
 import Control.Monad.ST
-import Control.Monad.Primitive
---import Data.Monoid
-import Data.Word
---import Data.Proxy
-
-import Text.PrettyPrint (Doc)
-import qualified Text.PrettyPrint as PP
-
+-- mwc-random
 import qualified System.Random.MWC as R
+-- vector
 import qualified Data.Vector as V
+-- evil
+import Evil.EvoAlgorithm
+import Evil.Individual
+import Evil.Spaces
+import Evil.PPrintable
+import Evil.RandUtils
 
-
---------------------------------------------------------------------------------
--- CLASSES
---------------------------------------------------------------------------------
-class PPrintable a where
-    pprint :: a -> Doc
---------------------------------------------------------------------------------
-class Domain x where
-    mkDomain :: (PrimMonad m) => R.Gen (PrimState m) -> m x
---------------------------------------------------------------------------------
-class CoDomain x y where
-    fitness :: x -> y
---------------------------------------------------------------------------------
-data IsFitnessEvaluated = WithFit | NoFit
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-class (Domain x) => Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
-    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y NoFit)
-    mkIndividual  :: x -> a x y NoFit
-    fitnessify    :: a x y NoFit -> a x y WithFit
-    getFitness    :: a x y WithFit -> y
-    getIndividual :: a x y fe -> x
---------------------------------------------------------------------------------
---class Generation g where
---    nextGeneration :: (PrimMonad m) => Proxy g -> V.Vector (a x y NoFit) -> R.Gen (PrimState m) -> m (V.Vector (a x y NoFit))
---------------------------------------------------------------------------------
-class EvoAlgorithm ea params | ea -> params where
-    initialize :: (PrimMonad m) => params -> R.Gen (PrimState m) -> m ea
-    nextGen    :: (PrimMonad m) => ea -> m (Maybe ea)
---------------------------------------------------------------------------------
-
-
---------------------------------------------------------------------------------
--- Utils
---------------------------------------------------------------------------------
-instance PPrintable ()    where pprint = const $ PP.text "()"
-instance PPrintable Float where pprint = PP.float
---------------------------------------------------------------------------------
-instance (Domain x, PPrintable x, Individual a x y)               => PPrintable (a x y NoFit) where
-    pprint = pprint . getIndividual
-instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => PPrintable (a x y WithFit) where
-    pprint x = px PP.<> PP.char '↣' PP.<> py
-      where px = pprint $ getIndividual x
-            py = pprint $ getFitness x
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-instance (Domain x, PPrintable x, Individual a x y)               => Show (a x y NoFit) where
-    show = PP.render . pprint
-instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => Show (a x y WithFit) where
-    show = PP.render . pprint
---------------------------------------------------------------------------------
 
 
 --------------------------------------------------------------------------------
@@ -121,16 +73,6 @@ instance (Domain x, CoDomain x y) => Individual IndividualContainer x y where
 --------------------------------------------------------------------------------
 
 
---------------------------------------------------------------------------------
--- Random stuff
---------------------------------------------------------------------------------
-type RandomSeed = V.Vector Word32
---------------------------------------------------------------------------------
-genSeed :: IO RandomSeed
-genSeed = R.withSystemRandom aux
-  where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
---------------------------------------------------------------------------------
-
 
 --------------------------------------------------------------------------------
 generatePopulation :: (Domain x, Individual a x y) => Int -> R.GenST s -> ST s (V.Vector (a x y NoFit))
@@ -147,37 +89,11 @@ iteration seed = do
 --------------------------------------------------------------------------------
 
 
---mutate :: IndividualContainer Domain a -> IndividualContainer Domain ()
---mutate (IndividualContainer (x,_)) = IndividualContainer . (,()) $ x + 0.15
-
---crossover :: IndividualContainer Domain a -> IndividualContainer Domain a -> [IndividualContainer Domain ()]
---crossover (IndividualContainer (x, _)) (IndividualContainer (y, _)) = [IndividualContainer (x + y / 2, ())]
---crossover x y = _
---  where xx = getIndividual x
---        yy = getIndividual y
-
 type VInds a = V.Vector (IndividualContainer DomainFloat CoDomainFloat a)
 
 main :: IO ()
 main = do
-    --let init = initialize
-    --    init' = fitnessify <$> init
-    --    select1 = init !! 3
-    --    select2 = init !! 30
-    --    (cross1:_) = crossover select1 select2
-    --    mutate1 = mutate cross1
-    --    --newPop = concatMap (fmap mutate . crossover )
-    --print $ init
-    --print $ init'
-    --print $ select1
-    --print $ select2
-    --print $ cross1
-    --print $ mutate1
-
     seed <- genSeed
     let (res :: (VInds NoFit, VInds NoFit)) = runST $ iteration seed
     print $ fmap (fmap fitnessify )res
-
-
     putStrLn "OHAI"
-
