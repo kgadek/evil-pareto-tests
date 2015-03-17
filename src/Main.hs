@@ -44,10 +44,17 @@ data IsFitnessEvaluated = WithFit | NoFit
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 class (Domain x) => Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
     newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y NoFit)
-    mkIndividual  ::                  x -> a x y NoFit
-    fitnessify    ::                  a x y NoFit -> a x y WithFit
-    getIndividual :: forall fe_ .     a x y fe_ -> x
-    getFitness    ::                  a x y WithFit -> y
+    mkIndividual  :: x -> a x y NoFit
+    fitnessify    :: a x y NoFit -> a x y WithFit
+    getFitness    :: a x y WithFit -> y
+    getIndividual :: a x y fe -> x
+--------------------------------------------------------------------------------
+--class Generation g where
+--    nextGeneration :: (PrimMonad m) => Proxy g -> V.Vector (a x y NoFit) -> R.Gen (PrimState m) -> m (V.Vector (a x y NoFit))
+--------------------------------------------------------------------------------
+class EvoAlgorithm ea params | ea -> params where
+    initialize :: (PrimMonad m) => params -> R.Gen (PrimState m) -> m ea
+    nextGen    :: (PrimMonad m) => ea -> m (Maybe ea)
 --------------------------------------------------------------------------------
 
 
@@ -122,6 +129,9 @@ type RandomSeed = V.Vector Word32
 genSeed :: IO RandomSeed
 genSeed = R.withSystemRandom aux
   where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
+--------------------------------------------------------------------------------
+
+
 --------------------------------------------------------------------------------
 generatePopulation :: (Domain x, Individual a x y) => Int -> R.GenST s -> ST s (V.Vector (a x y NoFit))
 generatePopulation size gen = V.fromList <$> replicateM size (newIndividual gen)
