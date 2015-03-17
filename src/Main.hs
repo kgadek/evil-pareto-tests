@@ -4,11 +4,11 @@
 --{-# LANGUAGE ScopedTypeVariables #-}
 --{-# LANGUAGE TupleSections #-}
 --{-# LANGUAGE TypeSynonymInstances #-}
---{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 --{-# LANGUAGE TypeFamilies #-}
---{-# LANGUAGE DataKinds #-}
---{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 
 
 module Main where
@@ -28,6 +28,37 @@ import qualified System.Random.MWC as R
 import qualified Data.Vector as V
 
 
+--------------------------------------------------------------------------------
+type Representation a = V.Vector a
+type PopulationSize = Int
+type Domain = Float
+type Codomain = Float
+--------------------------------------------------------------------------------
+data IsFitnessEvaluated = WithFit | NoFit
+data Individual (fe :: IsFitnessEvaluated) where
+    IndividualFit   :: Domain  -> Codomain -> Individual WithFit
+    IndividualNofit :: Domain  ->             Individual NoFit
+--------------------------------------------------------------------------------
+
+
+
+mkPopulation :: PopulationSize -> R.GenST s -> ST s (Representation (Individual NoFit))
+mkPopulation = undefined
+
+iteration :: Representation (Individual NoFit) -> R.GenST s -> ST s (Representation (Individual NoFit))
+iteration = undefined
+
+
+--------------------------------------------------------------------------------
+data PartialOrder = Superior
+                  | Inferior
+                  | Incomparable
+
+class Poset a where
+    partialOrder :: a -> a -> PartialOrder
+--------------------------------------------------------------------------------
+
+
 -- representation
 -- funkcja fitness
 -- similarity
@@ -35,8 +66,6 @@ import qualified Data.Vector as V
 -- mutacja
 -- selekcja
 -- crossover
-
---data ParetoCompare = Superior | Inferior | Incomparable
 
 --class GenCodomain codomain where
 --    compareCod :: codomain -> codomain -> ParetoCompare
