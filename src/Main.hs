@@ -17,9 +17,9 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Primitive
-import Data.Monoid
+--import Data.Monoid
 import Data.Word
-import Data.Proxy
+--import Data.Proxy
 
 import Text.PrettyPrint (Doc)
 import qualified Text.PrettyPrint as PP
@@ -29,19 +29,62 @@ import qualified Data.Vector as V
 
 
 --------------------------------------------------------------------------------
---type Domain   = Float
-newtype DomainFloat = DomainFloat Float
+-- CLASSES
+--------------------------------------------------------------------------------
+class PPrintable a where
+    pprint :: a -> Doc
 --------------------------------------------------------------------------------
 class Domain x where
     mkDomain :: (PrimMonad m) => R.Gen (PrimState m) -> m x
+--------------------------------------------------------------------------------
+class CoDomain x y where
+    fitness :: x -> y
+--------------------------------------------------------------------------------
+data IsFitnessEvaluated = WithFit | NoFit
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+class (Domain x) => Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
+    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y NoFit)
+    mkIndividual  ::                  x -> a x y NoFit
+    fitnessify    ::                  a x y NoFit -> a x y WithFit
+    getIndividual :: forall fe_ .     a x y fe_ -> x
+    getFitness    ::                  a x y WithFit -> y
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- Utils
+--------------------------------------------------------------------------------
+instance PPrintable ()    where pprint = const $ PP.text "()"
+instance PPrintable Float where pprint = PP.float
+--------------------------------------------------------------------------------
+instance (Domain x, PPrintable x, Individual a x y)               => PPrintable (a x y NoFit) where
+    pprint = pprint . getIndividual
+instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => PPrintable (a x y WithFit) where
+    pprint x = px PP.<> PP.char '↣' PP.<> py
+      where px = pprint $ getIndividual x
+            py = pprint $ getFitness x
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+instance (Domain x, PPrintable x, Individual a x y)               => Show (a x y NoFit) where
+    show = PP.render . pprint
+instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => Show (a x y WithFit) where
+    show = PP.render . pprint
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- DOMAIN
+--------------------------------------------------------------------------------
+newtype DomainFloat = DomainFloat Float
 --------------------------------------------------------------------------------
 instance Domain DomainFloat where
     mkDomain gen = R.uniformR (-5,5) gen >>= return . DomainFloat
 instance PPrintable DomainFloat where
     pprint (DomainFloat x) = pprint x
 --------------------------------------------------------------------------------
-class CoDomain x y where
-    fitness :: x -> y
+
+
+--------------------------------------------------------------------------------
+-- CoDOMAIN
 --------------------------------------------------------------------------------
 newtype CoDomainFloat = CoDomainFloat Float
 --------------------------------------------------------------------------------
@@ -50,18 +93,10 @@ instance CoDomain DomainFloat CoDomainFloat where
 instance PPrintable CoDomainFloat where
     pprint (CoDomainFloat x) = pprint x
 --------------------------------------------------------------------------------
-class PPrintable a        where pprint :: a -> Doc
-instance PPrintable ()    where pprint = const $ PP.text "()"
-instance PPrintable Float where pprint = PP.float
+
+
 --------------------------------------------------------------------------------
-data IsFitnessEvaluated = WithFit | NoFit
---------------------------------------------------------------------------------
-class (Domain x) => Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
-    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y NoFit)
-    mkIndividual  ::                  x -> a x y NoFit
-    fitnessify    ::                  a x y NoFit -> a x y WithFit
-    getIndividual :: forall fe_ .     a x y fe_ -> x
-    getFitness    ::                  a x y WithFit -> y
+-- Individual
 --------------------------------------------------------------------------------
 data IndividualContainer x y (fe :: IsFitnessEvaluated) where
     IndividualContainerFit   :: x -> y -> IndividualContainer x y WithFit
@@ -76,16 +111,11 @@ instance (Domain x, CoDomain x y) => Individual IndividualContainer x y where
     getIndividual (IndividualContainerFit x _) = x
     getIndividual (IndividualContainerNofit x) = x
     getFitness (IndividualContainerFit _ y) = y
-instance (Domain x, PPrintable x, Individual a x y)               => PPrintable (a x y NoFit) where
-    pprint = pprint . getIndividual
-instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => PPrintable (a x y WithFit) where
-    pprint x = px PP.<> PP.char '↣' PP.<> py
-      where px = pprint $ getIndividual x
-            py = pprint $ getFitness x
-instance (Domain x, PPrintable x, Individual a x y)               => Show (a x y NoFit) where
-    show = PP.render . pprint
-instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => Show (a x y WithFit) where
-    show = PP.render . pprint
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- Random stuff
 --------------------------------------------------------------------------------
 type RandomSeed = V.Vector Word32
 --------------------------------------------------------------------------------
@@ -112,9 +142,13 @@ iteration seed = do
 
 --crossover :: IndividualContainer Domain a -> IndividualContainer Domain a -> [IndividualContainer Domain ()]
 --crossover (IndividualContainer (x, _)) (IndividualContainer (y, _)) = [IndividualContainer (x + y / 2, ())]
+--crossover x y = _
+--  where xx = getIndividual x
+--        yy = getIndividual y
 
 type VInds a = V.Vector (IndividualContainer DomainFloat CoDomainFloat a)
 
+main :: IO ()
 main = do
     --let init = initialize
     --    init' = fitnessify <$> init

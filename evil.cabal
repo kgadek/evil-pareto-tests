@@ -13,6 +13,7 @@ cabal-version:        >=1.10
 executable evil
   default-language:     Haskell2010
   Hs-Source-Dirs:       src
+  GHC-Options:          -Wall -fno-warn-unused-do-bind -fno-warn-unused-binds -fno-warn-unused-matches -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-monomorphism-restriction
   main-is:              Main.hs
   build-depends:        base >=4.7 && <4.8
                       , pretty
