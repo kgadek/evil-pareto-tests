@@ -1,12 +1,12 @@
---{-# LANGUAGE FlexibleInstances #-}
---{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FunctionalDependencies #-}
---{-# LANGUAGE ScopedTypeVariables #-}
---{-# LANGUAGE TupleSections #-}
---{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
---{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 
@@ -29,72 +29,111 @@ import qualified Data.Vector as V
 
 
 --------------------------------------------------------------------------------
-type Representation a = V.Vector a
-type PopulationSize = Int
-type Domain = Float
-type Codomain = Float
+--type Domain   = Float
+newtype DomainFloat = DomainFloat Float
+--------------------------------------------------------------------------------
+class Domain x where
+    mkDomain :: (PrimMonad m) => R.Gen (PrimState m) -> m x
+--------------------------------------------------------------------------------
+instance Domain DomainFloat where
+    mkDomain gen = R.uniformR (-5,5) gen >>= return . DomainFloat
+instance PPrintable DomainFloat where
+    pprint (DomainFloat x) = pprint x
+--------------------------------------------------------------------------------
+class CoDomain x y where
+    fitness :: x -> y
+--------------------------------------------------------------------------------
+newtype CoDomainFloat = CoDomainFloat Float
+--------------------------------------------------------------------------------
+instance CoDomain DomainFloat CoDomainFloat where
+    fitness (DomainFloat x) = CoDomainFloat ((x-1)*(x+2))
+instance PPrintable CoDomainFloat where
+    pprint (CoDomainFloat x) = pprint x
+--------------------------------------------------------------------------------
+class PPrintable a        where pprint :: a -> Doc
+instance PPrintable ()    where pprint = const $ PP.text "()"
+instance PPrintable Float where pprint = PP.float
 --------------------------------------------------------------------------------
 data IsFitnessEvaluated = WithFit | NoFit
-data Individual (fe :: IsFitnessEvaluated) where
-    IndividualFit   :: Domain  -> Codomain -> Individual WithFit
-    IndividualNofit :: Domain  ->             Individual NoFit
+--------------------------------------------------------------------------------
+class (Domain x) => Individual (a :: * -> * -> IsFitnessEvaluated -> *) x y where
+    newIndividual :: (PrimMonad m) => R.Gen (PrimState m) -> m (a x y NoFit)
+    mkIndividual  ::                  x -> a x y NoFit
+    fitnessify    ::                  a x y NoFit -> a x y WithFit
+    getIndividual :: forall fe_ .     a x y fe_ -> x
+    getFitness    ::                  a x y WithFit -> y
+--------------------------------------------------------------------------------
+data IndividualContainer x y (fe :: IsFitnessEvaluated) where
+    IndividualContainerFit   :: x -> y -> IndividualContainer x y WithFit
+    IndividualContainerNofit :: x ->      IndividualContainer x y NoFit
+--------------------------------------------------------------------------------
+instance (Domain x, CoDomain x y) => Individual IndividualContainer x y where
+    newIndividual gen = mkDomain gen >>= return . IndividualContainerNofit
+    fitnessify (IndividualContainerNofit x) = IndividualContainerFit x (fitness x)
+
+    mkIndividual x = IndividualContainerNofit x
+
+    getIndividual (IndividualContainerFit x _) = x
+    getIndividual (IndividualContainerNofit x) = x
+    getFitness (IndividualContainerFit _ y) = y
+instance (Domain x, PPrintable x, Individual a x y)               => PPrintable (a x y NoFit) where
+    pprint = pprint . getIndividual
+instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => PPrintable (a x y WithFit) where
+    pprint x = px PP.<> PP.char '↣' PP.<> py
+      where px = pprint $ getIndividual x
+            py = pprint $ getFitness x
+instance (Domain x, PPrintable x, Individual a x y)               => Show (a x y NoFit) where
+    show = PP.render . pprint
+instance (Domain x, PPrintable x, PPrintable y, Individual a x y) => Show (a x y WithFit) where
+    show = PP.render . pprint
+--------------------------------------------------------------------------------
+type RandomSeed = V.Vector Word32
+--------------------------------------------------------------------------------
+genSeed :: IO RandomSeed
+genSeed = R.withSystemRandom aux
+  where aux (gen::R.GenST s) = R.uniformVector gen 256 :: ST s (V.Vector Word32)
+--------------------------------------------------------------------------------
+generatePopulation :: (Domain x, Individual a x y) => Int -> R.GenST s -> ST s (V.Vector (a x y NoFit))
+generatePopulation size gen = V.fromList <$> replicateM size (newIndividual gen)
+----------------------------------------------------------------------------------
+iteration :: (Domain x, Individual a x y) => RandomSeed -> ST s (V.Vector (a x y NoFit), V.Vector (a x y NoFit))
+iteration seed = do
+    gen <- R.initialize seed
+    initial_population1 <- generatePopulation population_size gen
+    initial_population2 <- generatePopulation population_size gen
+    return (initial_population1, initial_population2)
+  where
+    population_size = 20
 --------------------------------------------------------------------------------
 
 
+--mutate :: IndividualContainer Domain a -> IndividualContainer Domain ()
+--mutate (IndividualContainer (x,_)) = IndividualContainer . (,()) $ x + 0.15
 
-mkPopulation :: PopulationSize -> R.GenST s -> ST s (Representation (Individual NoFit))
-mkPopulation = undefined
+--crossover :: IndividualContainer Domain a -> IndividualContainer Domain a -> [IndividualContainer Domain ()]
+--crossover (IndividualContainer (x, _)) (IndividualContainer (y, _)) = [IndividualContainer (x + y / 2, ())]
 
-iteration :: Representation (Individual NoFit) -> R.GenST s -> ST s (Representation (Individual NoFit))
-iteration = undefined
-
-
---------------------------------------------------------------------------------
-data PartialOrder = Superior
-                  | Inferior
-                  | Incomparable
-
-class Poset a where
-    partialOrder :: a -> a -> PartialOrder
---------------------------------------------------------------------------------
-
-
--- representation
--- funkcja fitness
--- similarity
--- generacja
--- mutacja
--- selekcja
--- crossover
-
---class GenCodomain codomain where
---    compareCod :: codomain -> codomain -> ParetoCompare
-
---class GenDomain domain codomain where
---    isSimilar  :: domain -> domain -> Bool
---    fitness    :: domain -> codomain
---    crossover  :: domain -> domain -> domain
---    mutate     :: domain -> ST s domain
---    generate   :: ST s domain
-
---class GenRepr repr domain codomain | repr -> domain codomain where
-    --select     :: repr -> ST s domain
-
-
-
-
-
---newtype Codomain3D = Codomain3D { _getCodomain3D :: (Int,Int,Int) }
-
---instance GenCodomain Codomain3D where
---  compareCod (Codomain3D (x1,y1,z1)) (Codomain3D (x2,y2,z2))
---      | x1 <= x2 && y1 <= y2 && z1 <= z2 = Inferior
---      | x1 >= x2 && y1 >= y2 && z1 >= z2 = Superior
---      | otherwise                        = Incomparable
-
-
-
-
+type VInds a = V.Vector (IndividualContainer DomainFloat CoDomainFloat a)
 
 main = do
-    putStrLn "NO SIEMA"
+    --let init = initialize
+    --    init' = fitnessify <$> init
+    --    select1 = init !! 3
+    --    select2 = init !! 30
+    --    (cross1:_) = crossover select1 select2
+    --    mutate1 = mutate cross1
+    --    --newPop = concatMap (fmap mutate . crossover )
+    --print $ init
+    --print $ init'
+    --print $ select1
+    --print $ select2
+    --print $ cross1
+    --print $ mutate1
+
+    seed <- genSeed
+    let (res :: (VInds NoFit, VInds NoFit)) = runST $ iteration seed
+    print $ fmap (fmap fitnessify )res
+
+
+    putStrLn "OHAI"
+
