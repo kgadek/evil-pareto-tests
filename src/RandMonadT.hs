@@ -2,6 +2,7 @@
 
 module RandMonadT where
 
+
 -- base
 import Control.Monad.IO.Class
 import Control.Applicative
@@ -17,7 +18,9 @@ import Control.Monad.Primitive (PrimState,PrimMonad)
 import qualified System.Random.MWC as R
 
 
+
 newtype RandMonadT m a = RandMonadT { runRandMonadT :: R.Gen (PrimState m) -> m (a, R.Gen (PrimState m)) }
+
 
 instance (Monad m) => Functor (RandMonadT m) where
     fmap f a = RandMonadT $ \r -> do
@@ -39,6 +42,8 @@ instance MonadTrans RandMonadT where
 
 instance (MonadIO m) => MonadIO (RandMonadT m) where
   liftIO = lift . liftIO
+
+
 
 liftR :: (MonadIO m, PrimMonad m) => (R.Gen (PrimState m) -> m a) -> RandMonadT m a
 liftR f = RandMonadT $ \r -> f r >>= return.(,r)
