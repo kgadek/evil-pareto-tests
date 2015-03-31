@@ -16,7 +16,10 @@ executable evil
   GHC-Options:          -Wall -fno-warn-unused-do-bind -fno-warn-unused-binds -fno-warn-unused-matches -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-monomorphism-restriction
   main-is:              Main.hs
   build-depends:        base >=4.7 && <4.8
-                      , pretty
                       , mwc-random
-                      , vector
+                      , pretty
                       , primitive
+                      , statistics
+                      , transformers
+                      , vector
+                      , containers

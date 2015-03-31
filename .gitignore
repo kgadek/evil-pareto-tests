@@ -7,3 +7,4 @@ tmp
 dash
 .DS_Store
 cabal.config
+tags

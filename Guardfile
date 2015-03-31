@@ -1,7 +1,7 @@
 # vim: set syntax=ruby
 
 guard :shell do
-  watch /(.*).hs$/ do |m|
+  watch %r{src/.*\.hs} do |m|
     puts "\n\n\n\n"
     puts "=[ #{m[0]} ]===================================="
     puts "-[ Building ]-----------------------------------"
