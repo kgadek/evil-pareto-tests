@@ -24,7 +24,7 @@ import qualified Data.Vector as V
 
 
 -- http://stackoverflow.com/a/13782206/547223
-sample :: PrimMonad m => [a] -> Int -> R.Gen (PrimState m) -> m [a]
+sample :: (PrimMonad m) => [a] -> Int -> R.Gen (PrimState m) -> m [a]
 sample ys size = go 0 (l - 1) (Seq.fromList ys)
   where
     l = length ys

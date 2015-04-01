@@ -12,7 +12,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 
 -- primitive
-import Control.Monad.Primitive (PrimState,PrimMonad)
+import Control.Monad.Primitive (PrimState)
 
 -- mwc-random
 import qualified System.Random.MWC as R
@@ -45,5 +45,5 @@ instance (MonadIO m) => MonadIO (RandMonadT m) where
 
 
 
-liftR :: (MonadIO m, PrimMonad m) => (R.Gen (PrimState m) -> m a) -> RandMonadT m a
+liftR :: (Monad m) => (R.Gen (PrimState m) -> m a) -> RandMonadT m a
 liftR f = RandMonadT $ \r -> f r >>= return.(,r)
